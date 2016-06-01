@@ -4,26 +4,35 @@
 #include <ctime>
 #include <cmath>
 
+#include "mmsystem.h"//导入声音头文件
+#pragma comment(lib,"winmm.lib")//导入声音头文件库
+
 #define NUM_HUANG 15  //同一个人物在屏幕中最多的数目
+#define NUM_HEART 2   //表示爱心出现的数量
 #define NUM_KISS 30
+#define TOTAL_SCORE 100
 #define IDB_YI 10001
 #define IDB_ZHONG 10002
 #define IDB_NAN 10003
 
 HINSTANCE hInst;
-HBITMAP   bg,bmp_huang_bo[3],gao_yi_xiang[3],lin_zhi_ling,bmp_kiss,gameover[2],process_bar,start;  //将人物的位图设置为数组，表示有三组难度
+HBITMAP   bg,bmp_huang_bo[3],gao_yi_xiang[3],lin_zhi_ling,bmp_kiss,gameover[2],process_bar,start,heart;  //将人物的位图设置为数组，表示有三组难度
 HDC	      mdc,hdc,bufdc;
-HWND      hWnd,h_wnd,button1,button2,button3;
+HWND      hWnd,h_wnd,button1,button2,button3,button4;
 DWORD  	  tPre,tNow;
 
 int x_bg=0,person[NUM_HUANG][4],kiss[NUM_KISS][3]; //person为二维数组，一个屏幕最多15个同一人物，四个标志位分别表示是否存在，以及横纵坐标 图片如何选择
 													//kiss数组也为二维数组，不过少了图片如何选择的标志位
+int red_heart[NUM_HEART][3];					//红心的标志数组，最多同时出现两个红心，并用三位表示是否存在，宽，高
 int x_lin=790,y_lin=200,bcount=30,count=0;//count计数用
 int nowX,nowY,i;
 int random = 0;							//随机数
 int life = 3,score = 0;							//生命值和分数
 int level = 1;							//难度系数，分1/2/3三个等级，1最简单，3最难，越难人的头越小。默认难度系数为1，
 int width_of_pic=70,height_of_pic=70;   //设置目标图片的宽度和高度，默认都为70px, 其余的为60,50px.
+double distance = 3;
+bool state_heart=true;
+int heart_state = 0;
 
 ATOM				MyRegisterClass(HINSTANCE hInstance);
 BOOL				InitInstance(HINSTANCE, int);
@@ -59,9 +68,15 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	}
 
 	//初始化
-	for(int i = 0; i < 15 ;i++){
+	for(int i = 0; i < NUM_HUANG ;i++){
 		for(int j = 0;j < 4; j++){
 			person[i][j] = 0;
+		}
+	}
+	
+	for(int p = 0;p < NUM_HEART;p++){
+		for(int q = 0;q < 3;q++){
+			red_heart[p][q] = 0;
 		}
 	}
 
@@ -152,18 +167,18 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	gameover[1] = (HBITMAP)LoadImage(NULL,"gameover2.bmp",IMAGE_BITMAP,900,500,LR_LOADFROMFILE); 
 	process_bar = (HBITMAP)LoadImage(NULL,"process_bar.bmp",IMAGE_BITMAP,600,225,LR_LOADFROMFILE); 
 	start = (HBITMAP)LoadImage(NULL,"start.bmp",IMAGE_BITMAP,900,500,LR_LOADFROMFILE); 
+	heart = (HBITMAP)LoadImage(NULL,"heart.bmp",IMAGE_BITMAP,100,43,LR_LOADFROMFILE); 
 
 
 	SelectObject(mdc,start);
 	BitBlt(hdc,0,0,900,500,mdc,0,0,SRCCOPY);
 
 	button1 = CreateWindow("Button", "一般难度", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,     
-            40, 100, 120, 40, hWnd,  (HMENU)IDB_YI, hInstance, NULL);
+            100, 210, 100, 35, hWnd,  (HMENU)IDB_YI, hInstance, NULL);
     button2 = CreateWindow("Button", "中等难度", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,     
-            190, 100, 120, 40, hWnd,  (HMENU)IDB_ZHONG, hInstance, NULL);
+            100, 280, 100, 35, hWnd,  (HMENU)IDB_ZHONG, hInstance, NULL);
 	button3 = CreateWindow("Button", "高级难度", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,     
-            40, 170, 120, 40, hWnd,  (HMENU)IDB_NAN, hInstance, NULL);
-
+            100, 350, 100, 35, hWnd,  (HMENU)IDB_NAN, hInstance, NULL);
 
 
 //	MyPaint(hdc);
@@ -184,6 +199,24 @@ void MyPaint(HDC hdc)
 	BitBlt(mdc,0,0,x_bg,500,bufdc,900-x_bg,0,SRCCOPY);
 	BitBlt(mdc,x_bg,0,900-x_bg,500,bufdc,0,0,SRCCOPY);
 
+//箭头的贴图
+	SelectObject(bufdc,bmp_kiss);
+	for(int m = 0;m < NUM_KISS;m++){
+		if(kiss[m][0] == 0) continue;
+		BitBlt(mdc,kiss[m][1],kiss[m][2],40,27,bufdc,40,0,SRCAND);  
+		BitBlt(mdc,kiss[m][1],kiss[m][2],40,27,bufdc,0,0,SRCPAINT); 
+	}
+
+
+//爱心的贴图
+	for(int n = 0;n < 2;n++){
+		if(red_heart[n][0]==1){
+			SelectObject(bufdc,heart);                     
+			BitBlt(mdc,red_heart[n][1],red_heart[n][2],50,43,bufdc,50,0,SRCAND);  
+			BitBlt(mdc,red_heart[n][1],red_heart[n][2],50,43,bufdc,0,0,SRCPAINT); 
+		}
+	}
+	
 
 //男生出现的贴图  
 	for(int i = 0; i < NUM_HUANG;i++){
@@ -207,32 +240,54 @@ void MyPaint(HDC hdc)
 	BitBlt(mdc,x_lin,y_lin,90,90,bufdc,90,0,SRCAND);  
 	BitBlt(mdc,x_lin,y_lin,90,90,bufdc,0,0,SRCPAINT); 
 
-//箭头的贴图
-	SelectObject(bufdc,bmp_kiss);
-	for(int m = 0;m < NUM_KISS;m++){
-		if(kiss[m][0] == 0) continue;
-		BitBlt(mdc,kiss[m][1],kiss[m][2],40,27,bufdc,40,0,SRCAND);  
-		BitBlt(mdc,kiss[m][1],kiss[m][2],40,27,bufdc,0,0,SRCPAINT); 
-		
-	}
-//进度条的贴图
+//生命值进度条的贴图
 	SelectObject(bufdc,process_bar); 
 	BitBlt(mdc,50,0,150,32,bufdc,450,64*life,SRCAND);  
 	BitBlt(mdc,50,0,150,32,bufdc,150,64*life,SRCPAINT); 
+//积分值进度条外框的贴图
+	SelectObject(bufdc,process_bar); 
+	BitBlt(mdc,400,6,150,30,bufdc,450,6,SRCAND);  
+	BitBlt(mdc,400,6,150,30,bufdc,150,6,SRCPAINT); 
+//此处的进度条需要计算怎样表示
+/*	SelectObject(bufdc,process_bar); 
+	BitBlt(mdc,406,-3,120,30,bufdc,323,30,SRCAND);  
+	BitBlt(mdc,406,-3,120,30,bufdc,23,30,SRCPAINT); 
+*/
+	SelectObject(bufdc,process_bar); 
+	BitBlt(mdc,406,-3,120*((float)score/(float)TOTAL_SCORE),30,bufdc,323,30,SRCAND);  
+	BitBlt(mdc,406,-3,120*((float)score/(float)TOTAL_SCORE),30,bufdc,23,30,SRCPAINT); 
 
-//	sprintf(str,"生命值  %d    ",life);
+/*	SelectObject(bufdc,process_bar); 		
+	BitBlt(mdc,406+60*((float)score/(float)TOTAL_SCORE),-3,60*((float)score/(float)TOTAL_SCORE),30,bufdc,323+60*((float)score/(float)TOTAL_SCORE),30,SRCAND);  
+	BitBlt(mdc,406+60*((float)score/(float)TOTAL_SCORE),-3,60*((float)score/(float)TOTAL_SCORE),30,bufdc,23+60*((float)score/(float)TOTAL_SCORE),30,SRCPAINT); 
+*/
+	//	sprintf(str,"生命值  %d    ",life);
 	sprintf(str,"生命值");
 	TextOut(mdc,0,10,str,strlen(str));
 	sprintf(str,"积分值  %d    ",score);
 	TextOut(mdc,300,10,str,strlen(str));
-//	sprintf(str,"Y  %d    ",y);
-//	TextOut(mdc,0,20,str,strlen(str));
+
+/*	sprintf(str,"%d  %d   %d   %d",person[0][0],person[0][1],person[0][2],person[0][3]);
+	TextOut(mdc,0,40,str,strlen(str));
+	
+	sprintf(str,"%d  %d   %d   %d",person[1][0],person[1][1],person[1][2],person[1][3]);
+	TextOut(mdc,0,60,str,strlen(str));
+
+	sprintf(str,"%d",life);
+	TextOut(mdc,0,80,str,strlen(str));
+
+	sprintf(str,"%d",red_heart[0][2]);
+	TextOut(mdc,0,100,str,strlen(str)); 
+	
+	sprintf(str,"%f",60*((float)score/(float)TOTAL_SCORE));
+	TextOut(mdc,0,100,str,strlen(str));
+ */
 	if(life == 0){
 		KillTimer(h_wnd, 1);
 		SelectObject(bufdc,gameover[0]);
 		BitBlt(mdc,0,0,900,500,bufdc,0,0,SRCCOPY);
 	}
-	if(score == 5000){   //得分1**后游戏成功
+	if(score == TOTAL_SCORE){   //得分***后游戏成功
 		KillTimer(h_wnd, 1);
 		SelectObject(bufdc,gameover[1]);
 		BitBlt(mdc,0,0,900,500,bufdc,0,0,SRCCOPY);
@@ -243,19 +298,17 @@ void MyPaint(HDC hdc)
 	
 	tPre = GetTickCount();
 
-
-
   }
 
 VOID CALLBACK OnTimer(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime ){
 
 //	Degree(level);			//初始化游戏的难度
-
-	ChangeCoordinate(); //各种图形坐标的变化
-
-	judge();			// 判断各种冲撞
    
 	MyPaint(GetDC(h_wnd));
+
+	judge();			// 判断各种冲撞
+
+	ChangeCoordinate(); //各种图形坐标的变化
 }
 
 //初始化游戏的难度
@@ -284,8 +337,8 @@ void ChangeCoordinate(){
 
 	//黄渤的图标变化
 		/*控制出现*/
-	count=(count+1)%20;
-	if(count == 0){
+	count++;
+	if(count%20 == 0){
 		for(int j = 0;j < 15;j++){
 			if(person[j][0] == 1) continue;
 			if(person[j][0] == 0){
@@ -296,14 +349,18 @@ void ChangeCoordinate(){
 				int tmp = rand()%3;
 				person[j][2] = y+30;
 				if(tmp == 2) person[j][3] = 1;
+				else{
+					person[j][3] = 0;
+				}
 				break;
 			}
 		}
 	}
 		/*控制坐标变化*/
+	if(count%30 == 0) distance+=0.05;
 	for(int i = 0;i < NUM_HUANG;i++){
 		if(person[i][0] == 1){
-			person[i][1] += 5;  //如果是显示的  则横坐标自加10
+			person[i][1] += distance;  //如果是显示的  则横坐标自加,随游戏进行，人物越来越快
 			/*如果走出了所在区域，就将对应标志复原*/
 			if(person[i][1] > 900){
 				person[i][0] = 0;
@@ -318,6 +375,7 @@ void ChangeCoordinate(){
 	for(int  m = 0;m < NUM_KISS; m++){
 		if(kiss[m][0] == 1){
 			kiss[m][1] -= 5;
+			random+=m;
 			if(kiss[m][1] < 0){
 				kiss[m][0] = 0;
 				kiss[m][1] = 0;
@@ -325,27 +383,61 @@ void ChangeCoordinate(){
 			}
 		}
 	}
+
+	//爱心的坐标变化
+	for(int t = 0;t < NUM_HEART; t++){
+		if(red_heart[t][0]==1){
+			red_heart[t][1]+=3;
+			if(heart_state == 0){
+				red_heart[t][2]+=3;
+			}
+			if(heart_state == 1){
+				red_heart[t][2]-=3;
+			}
+			if(red_heart[t][2] < 0) heart_state = 0;
+			else if(red_heart[t][2] > 420) heart_state = 1;
+			if(red_heart[t][1] > 900){
+				red_heart[t][0]=0;
+				red_heart[t][1]=0;
+				red_heart[t][2]=0;
+			}
+		}
+	}
 }
 /*判断各种冲撞*/
 void judge(){
-	//kiss是否打击在了黄渤或高以翔的脸上，并做相应的判断，person[i][3]为1表示黄渤。为0表示黄渤
+	//子弹是否打击在了黄渤或高以翔的脸上，并做相应的判断，person[i][3]为1表示黄渤。为0表示高以翔
 	for(int i = 0;i < NUM_KISS;i++){
-		int state = 0;
+		int state = 0;									//状态变量
 		if(kiss[i][0] == 1){
+			random+=i;
 			for(int j = 0; j < NUM_HUANG;j++){
 				if(person[j][0] == 1){
 					if(kiss[i][1] - person[j][1] < 38){   //横坐标
 						if((kiss[i][2] - person[j][2]) < 60 && (kiss[i][2] - person[j][2]) > -20){	//纵坐标
-							if(person[i][3] == 1){
+							if(person[j][3] == 1){
 								life -= 1;	
 							}
-							if(person[i][3] == 0){
+							if(person[j][3] == 0){
 								score += 25;
+								int tmp = rand()%6;
+								if(tmp == 1){
+									for(int t = 0;t < NUM_HEART ;t++){
+										if(red_heart[t][0] == 0){
+											red_heart[t][0] = 1;
+											red_heart[t][1] = person[j][1]+10;
+											red_heart[t][2] = person[j][2]+10;
+											break;
+										}
+									}
+								}
+							}	
+							if(life > 3){
+								life = 3;
 							}
 							if(life <= 0){
 								life = 0;
 							}
-							
 							kiss[i][0] = 0;
 							kiss[i][1] = 0;
 							kiss[i][2] = 0;
@@ -362,27 +454,43 @@ void judge(){
 		}
 	}
 
+	//爱心是否与林志玲碰撞
+	for(int p = 0;p < NUM_HEART;p++){
+		if(red_heart[p][0]==1){
+			if(x_lin - red_heart[p][1] <50){
+				if(y_lin - red_heart[p][2] <43 && y_lin -red_heart[p][2] > -90){
+					if(life < 3) life++;
+
+					red_heart[p][0] = 0;
+					red_heart[p][1] = 0;
+					red_heart[p][2] = 0;
+
+				}
+			}
+		}
+	}
 	//黄渤是否和林志玲碰撞
 	for(int m = 0; m < NUM_HUANG;m++){
 		if(person[m][0] == 1){
 			if(x_lin - person[m][1] < 60 && x_lin - person[m][1] > -70){
 				if(y_lin - person[m][2] < 70 && y_lin - person[m][2] > -85){
 					if(person[m][3] == 1){
-						life -= 1; 
+						life -= 1;
 					}
 					else if(person[m][3] == 0){
 						score += 25;
 					}
-					if(score > 500){
+			/*		if(score > 500){
 						life += 1;
 						score = 0 ;
-					}
+					}*/
 					if(life > 3){
 						life = 3;
 					}
 					if(life <= 0){
 						life = 0;
 					}
+//					PlaySound("b.wav", NULL, SND_FILENAME | SND_ASYNC);
 					person[m][0] = 0;
 					person[m][1] = 0;
 					person[m][2] = 0;
@@ -485,6 +593,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					ShowWindow(button1, SW_HIDE);
 					ShowWindow(button2, SW_HIDE);
 					ShowWindow(button3, SW_HIDE);
+					ShowWindow(button4, SW_HIDE);
 					Degree(1);
 					SetTimer(hWnd,1,20,(TIMERPROC)OnTimer);
                     break;
@@ -494,6 +603,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					ShowWindow(button1, SW_HIDE);
 					ShowWindow(button2, SW_HIDE);
 					ShowWindow(button3, SW_HIDE);
+					ShowWindow(button4, SW_HIDE);
 					Degree(2);
 					SetTimer(hWnd,1,20,(TIMERPROC)OnTimer);
                     break;   
@@ -502,9 +612,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					ShowWindow(button1, SW_HIDE);
 					ShowWindow(button2, SW_HIDE);
 					ShowWindow(button3, SW_HIDE);
+					ShowWindow(button4, SW_HIDE);
 					Degree(3);
 					SetTimer(hWnd,1,20,(TIMERPROC)OnTimer);
                     break;
+
                 default:     
                     break;     
 			}     
